@@ -1,51 +1,215 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import { useState, useEffect } from "react";
-import UploadForm from "./components/UploadForm";
-import Dashboard from "./pages/Dashboard";
+import { useRef, useState } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
-function App() {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    dark ? root.classList.add("dark") : root.classList.remove("dark");
-  }, [dark]);
-
-  return (
-    <BrowserRouter>
-      {/* Navbar */}
-      <nav className="flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        
-        {/* Left */}
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
-            Extractor AI
-          </h1>
-
-          <Link to="/" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
-            Upload
-          </Link>
-
-          <Link to="/dashboard" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
-            Dashboard
-          </Link>
-        </div>
-
-        {/* Right */}
-        <button
-          onClick={() => setDark(!dark)}
-          className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
-        >
-          {dark ? "☀️ Light" : "🌙 Dark"}
-        </button>
-      </nav>
-
-      <Routes>
-        <Route path="/" element={<UploadForm />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-      </Routes>
-    </BrowserRouter>
-  );
+interface PdfItem {
+  file: File;
+  customName: string;
 }
 
-export default App;
+const formatSize = (size: number) => (size / 1024).toFixed(1) + " KB";
+
+const UploadForm = () => {
+  const navigate = useNavigate();
+
+  const [excel, setExcel] = useState<File | null>(null);
+  const [pdfs, setPdfs] = useState<PdfItem[]>([]);
+  const [sheetName, setSheetName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [toast, setToast] = useState<any>(null);
+
+  const excelRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (msg: string, type: "success" | "error") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleExcel = (file: File) => {
+    if (!file.name.endsWith(".xlsx")) {
+      showToast("Only Excel files allowed", "error");
+      return;
+    }
+    setExcel(file);
+  };
+
+  const handlePdf = (files: File[]) => {
+    const items = files.map((f) => ({
+      file: f,
+      customName: f.name.replace(".pdf", ""),
+    }));
+    setPdfs((prev) => [...prev, ...items]);
+  };
+
+  const removePdf = (i: number) => {
+    setPdfs((prev) => prev.filter((_, idx) => idx !== i));
+  };
+
+  const isValid =
+    excel &&
+    pdfs.length > 0 &&
+    pdfs.every((p) => p.customName.trim() !== "");
+
+  const handleSubmit = async () => {
+    if (!isValid) {
+      showToast("Fill required fields", "error");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("template", excel!);
+    formData.append("sheetName", sheetName);
+    formData.append("prompt", prompt);
+
+    pdfs.forEach((p, i) => {
+      formData.append("pdfs", p.file);
+      formData.append(`pdf_names_${i}`, p.customName);
+    });
+
+    try {
+      setLoading(true);
+
+      await axios.post("http://localhost:8000/api/upload", formData, {
+        onUploadProgress: (e) => {
+          if (e.total) {
+            setProgress(Math.round((e.loaded * 100) / e.total));
+          }
+        },
+      });
+
+      showToast("Upload successful 🎉", "success");
+
+      setTimeout(() => navigate("/dashboard"), 1200);
+    } catch {
+      showToast("Upload failed ❌", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex justify-center items-center bg-gray-100 dark:bg-gray-900 p-4">
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50">
+          <div className={`px-4 py-3 rounded-lg text-white ${toast.type === "success" ? "bg-green-500" : "bg-red-500"}`}>
+            {toast.msg}
+          </div>
+        </div>
+      )}
+
+      <div className="w-full max-w-xl bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100">
+
+        <h2 className="text-xl font-semibold mb-5">Upload Files</h2>
+
+        {/* Excel */}
+        <div className="mb-6">
+          <p className="text-sm mb-2 text-gray-600 dark:text-gray-300">Excel *</p>
+
+          {!excel ? (
+            <div onClick={() => excelRef.current?.click()}
+              className="flex items-center gap-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
+              <span className="text-2xl">📊</span>
+              <div>
+                <p className="font-medium">Upload Excel File</p>
+                <p className="text-xs text-gray-500">.xlsx only</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-between items-center p-3 bg-indigo-100 dark:bg-gray-700 rounded-lg">
+              <div className="flex items-center gap-3">
+                📊
+                <div>
+                  <p>{excel.name}</p>
+                  <p className="text-xs">{formatSize(excel.size)}</p>
+                </div>
+              </div>
+              <button onClick={() => setExcel(null)} className="text-red-500">✕</button>
+            </div>
+          )}
+        </div>
+
+        {/* PDFs */}
+        <div className="mb-6">
+          <p className="text-sm mb-2 text-gray-600 dark:text-gray-300">PDFs *</p>
+
+          <div onClick={() => pdfRef.current?.click()}
+            className="flex items-center gap-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
+            <span className="text-2xl">📄</span>
+            <div>
+              <p className="font-medium">Upload PDF Files</p>
+              <p className="text-xs text-gray-500">Multiple supported</p>
+            </div>
+          </div>
+
+          {pdfs.map((pdf, i) => (
+            <div key={i} className="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  📄
+                  <div>
+                    <p>{pdf.file.name}</p>
+                    <p className="text-xs">{formatSize(pdf.file.size)}</p>
+                  </div>
+                </div>
+                <button onClick={() => removePdf(i)} className="text-red-500">✕</button>
+              </div>
+
+              <input
+                className="mt-2 w-full p-2 border rounded dark:bg-gray-800"
+                value={pdf.customName}
+                onChange={(e) =>
+                  setPdfs((prev) =>
+                    prev.map((p, idx) =>
+                      idx === i ? { ...p, customName: e.target.value } : p
+                    )
+                  )
+                }
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Inputs */}
+        <input
+          placeholder="Sheet Name"
+          className="w-full p-2 mb-3 border rounded dark:bg-gray-800"
+          value={sheetName}
+          onChange={(e) => setSheetName(e.target.value)}
+        />
+
+        <textarea
+          placeholder="Prompt"
+          className="w-full p-2 mb-4 border rounded dark:bg-gray-800"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+
+        {/* Progress */}
+        {loading && (
+          <div className="h-2 bg-gray-300 rounded mb-4">
+            <div className="h-full bg-indigo-600" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+
+        <button
+          onClick={handleSubmit}
+          disabled={!isValid || loading}
+          className="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+        >
+          Submit
+        </button>
+
+        {/* Hidden */}
+        <input ref={excelRef} type="file" accept=".xlsx" hidden onChange={(e) => e.target.files && handleExcel(e.target.files[0])} />
+        <input ref={pdfRef} type="file" multiple accept="application/pdf" hidden onChange={(e) => e.target.files && handlePdf(Array.from(e.target.files))} />
+      </div>
+    </div>
+  );
+};
+
+export default UploadForm;
