@@ -1,1 +1,53 @@
 # koyyalokesh-calculator
+
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import UploadForm from "./components/UploadForm";
+import Dashboard from "./pages/Dashboard";
+
+function App() {
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    dark ? root.classList.add("dark") : root.classList.remove("dark");
+  }, [dark]);
+
+  return (
+    <BrowserRouter>
+      {/* Navbar */}
+      <nav className="flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        
+        {/* Left */}
+        <div className="flex items-center gap-6">
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
+            Extractor AI
+          </h1>
+
+          <Link to="/" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
+            Upload
+          </Link>
+
+          <Link to="/dashboard" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
+            Dashboard
+          </Link>
+        </div>
+
+        {/* Right */}
+        <button
+          onClick={() => setDark(!dark)}
+          className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+        >
+          {dark ? "☀️ Light" : "🌙 Dark"}
+        </button>
+      </nav>
+
+      <Routes>
+        <Route path="/" element={<UploadForm />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
